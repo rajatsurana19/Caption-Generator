@@ -29,9 +29,11 @@
             width: 100%;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
         }
-         h1 {
+
+        h1 {
             text-align: center;
             margin-bottom: 8px;
+            color: #333;
         }
 
         .subtitle {
@@ -48,6 +50,7 @@
             cursor: pointer;
             background: #f8f9ff;
             margin-bottom: 20px;
+            transition: background 0.3s;
         }
 
         .upload-area:hover {
@@ -90,16 +93,127 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
 
+        .btn {
+            width: 100%;
+            padding: 15px;
+            border-radius: 30px;
+            border: none;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            display: none;
+            margin-bottom: 15px;
+            color: #fff;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            transition: opacity 0.3s;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+        }
+
+        .btn.active {
+            display: block;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .download-btn {
+            background: #28a745;
+        }
+
+        .download-btn:hover {
+            opacity: 0.9;
+        }
+
+        .status {
+            display: none;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        .status.active {
+            display: block;
+        }
+
+        .status.processing {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .loader {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .srt-output {
+            display: none;
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+            border: 1px solid #dee2e6;
+        }
+
+        .srt-output.active {
+            display: block;
+        }
+
+        .srt-output h3 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        pre {
+            font-family: monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            color: #333;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Caption Generator<h1>
+        <h1>Caption Generator</h1>
         <p class="subtitle">Upload a video to generate subtitles (.srt)</p>
 
         <div class="upload-area" id="uploadArea">
-            <p><strong>Click to upload</strong> or drag & drop</p>
-            <p>MP4, MOV, AVI supported</p>
+            <div class="upload-icon">📹</div>
+            <p><strong>Click to upload</strong> or drag and drop</p>
+            <p style="color: #999; font-size: 14px;">MP4, MOV, AVI supported</p>
         </div>
 
         <input type="file" id="fileInput" accept="video/*">
@@ -115,107 +229,231 @@
         <div class="status" id="status"></div>
 
         <div class="srt-output" id="srtOutput">
-        <pre id="srtContent"></pre>
+            <h3>Generated Captions:</h3>
+            <pre id="srtContent"></pre>
         </div>
 
-        <button class="btn download-btn" id="downloadBtn">Download .SRT</button>
+        <button class="btn download-btn" id="downloadBtn">Download .SRT File</button>
     </div>
 
 <script>
-    const uploadArea = document.getElementById("uploadArea");
-    const fileInput = document.getElementById("fileInput");
-    const videoPreview = document.getElementById("videoPreview");
-    const videoPlayer = document.getElementById("videoPlayer");
-    const generateBtn = document.getElementById("generateBtn");
-    const statusBox = document.getElementById("status");
-    const srtOutput = document.getElementById("srtOutput");
-    const srtContent = document.getElementById("srtContent");
-    const downloadBtn = document.getElementById("downloadBtn");
-    const fileName = document.getElementById("fileName");
+    var uploadArea = document.getElementById('uploadArea');
+    var fileInput = document.getElementById('fileInput');
+    var videoPreview = document.getElementById('videoPreview');
+    var videoPlayer = document.getElementById('videoPlayer');
+    var generateBtn = document.getElementById('generateBtn');
+    var statusBox = document.getElementById('status');
+    var srtOutput = document.getElementById('srtOutput');
+    var srtContent = document.getElementById('srtContent');
+    var downloadBtn = document.getElementById('downloadBtn');
+    var fileName = document.getElementById('fileName');
 
-    let currentVideoFile = null;
-    let generatedSrt = "";
+    var currentVideoFile = null;
+    var generatedSrt = '';
+    var pollingInterval = null;
 
-    uploadArea.onclick = () => fileInput.click();
+    uploadArea.onclick = function() {
+        fileInput.click();
+    };
 
-    fileInput.onchange = e => {
-        if (e.target.files.length > 0) handleFile(e.target.files[0]);
+    uploadArea.ondragover = function(e) {
+        e.preventDefault();
+        uploadArea.style.background = '#e3e8ff';
+    };
+
+    uploadArea.ondragleave = function() {
+        uploadArea.style.background = '#f8f9ff';
+    };
+
+    uploadArea.ondrop = function(e) {
+        e.preventDefault();
+        uploadArea.style.background = '#f8f9ff';
+        var files = e.dataTransfer.files;
+        if (files.length > 0) {
+            handleFile(files[0]);
+        }
+    };
+
+    fileInput.onchange = function(e) {
+        if (e.target.files.length > 0) {
+            handleFile(e.target.files[0]);
+        }
     };
 
     function handleFile(file) {
-        if (!file.type.includes("video")) {
-            alert("Please upload a valid video file");
+        if (file.type.indexOf('video') === -1) {
+            alert('Please upload a valid video file');
             return;
         }
 
         currentVideoFile = file;
         videoPlayer.src = URL.createObjectURL(file);
 
-        videoPreview.classList.add("active");
-        generateBtn.classList.add("active");
-        fileName.classList.add("active");
-        fileName.textContent = "Selected: " + file.name;
+        videoPreview.classList.add('active');
+        generateBtn.classList.add('active');
+        fileName.classList.add('active');
+        fileName.textContent = 'Selected: ' + file.name;
 
         hideOutput();
     }
 
-    generateBtn.onclick = () => {
+    generateBtn.onclick = function() {
         if (!currentVideoFile) return;
 
         generateBtn.disabled = true;
-        showStatus("processing", "Uploading & processing video...");
+        hideOutput();
+        showStatus('processing', '<span class="loader"></span>Uploading video...');
 
-        const formData = new FormData();
-        formData.append("video", currentVideoFile);
+        var formData = new FormData();
+        formData.append('video', currentVideoFile);
 
-        fetch("http://localhost:5000/upload", {
-            method: "POST",
+        fetch('http://localhost:5000/upload', {
+            method: 'POST',
             body: formData
         })
-        .then(res => res.json())
-        .then(data => {
-            if (data.srt) {
-                generatedSrt = data.srt;
-                srtContent.textContent = generatedSrt;
-                srtOutput.classList.add("active");
-                downloadBtn.classList.add("active");
-                showStatus("success", "Captions generated successfully!");
+        .then(function(res) {
+            if (!res.ok) {
+                throw new Error('Upload failed');
+            }
+            return res.json();
+        })
+        .then(function(data) {
+            if (data.error) {
+                showStatus('error', 'Error: ' + data.error);
+                generateBtn.disabled = false;
+            } else if (data.job_id) {
+                console.log('Job ID received:', data.job_id);
+                showStatus('processing', '<span class="loader"></span>Video queued. Processing...');
+                pollForResult(data.job_id);
             } else {
-                showStatus("error", data.error || "Something went wrong");
+                showStatus('error', 'No job ID received from server');
+                generateBtn.disabled = false;
             }
         })
-        .catch(err => {
-            showStatus("error", "Backend not running or CORS issue");
-            console.error(err);
-        })
-        .finally(() => {
+        .catch(function(err) {
+            showStatus('error', 'Upload failed. Make sure backend is running on port 5000.');
+            console.error('Upload error:', err);
             generateBtn.disabled = false;
         });
     };
 
-    downloadBtn.onclick = () => {
-        const blob = new Blob([generatedSrt], { type: "text/plain" });
-        const url = URL.createObjectURL(blob);
+    function pollForResult(jobId) {
+        console.log('Starting to poll for job:', jobId);
+        
+        if (pollingInterval) {
+            clearInterval(pollingInterval);
+            pollingInterval = null;
+        }
 
-        const a = document.createElement("a");
+        var pollCount = 0;
+        var maxPolls = 300; // 10 minutes max (300 * 2 seconds)
+
+        pollingInterval = setInterval(function() {
+            pollCount++;
+            console.log('Polling attempt:', pollCount);
+
+            if (pollCount > maxPolls) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+                showStatus('error', '✗ Processing timeout. Please try again.');
+                generateBtn.disabled = false;
+                return;
+            }
+
+            fetch('http://localhost:5000/result/' + jobId)
+                .then(function(res) {
+                    console.log('Response status:', res.status);
+                    if (!res.ok) {
+                        throw new Error('HTTP error ' + res.status);
+                    }
+                    return res.json();
+                })
+                .then(function(data) {
+                    console.log('Poll response:', data);
+                    
+                    if (data.status === 'queued') {
+                        var msg = data.message || 'Waiting in queue...';
+                        showStatus('processing', '<span class="loader"></span> ' + msg);
+                    } 
+                    else if (data.status === 'processing') {
+                        var msg = data.message || 'Processing video...';
+                        showStatus('processing', '<span class="loader"></span> ' + msg);
+                    } 
+                    else if (data.status === 'done') {
+                        console.log('Job completed! SRT length:', data.srt ? data.srt.length : 0);
+                        clearInterval(pollingInterval);
+                        pollingInterval = null;
+                        
+                        if (data.srt && data.srt.length > 0) {
+                            generatedSrt = data.srt;
+                            srtContent.textContent = generatedSrt;
+                            srtOutput.classList.add('active');
+                            downloadBtn.classList.add('active');
+                            
+                            var msg = data.message || 'Captions generated successfully!';
+                            showStatus('success', '✓ ' + msg);
+                        } else {
+                            showStatus('error', '✗ No captions were generated');
+                        }
+                        
+                        generateBtn.disabled = false;
+                    } 
+                    else if (data.status === 'error') {
+                        console.log('Job error:', data.error);
+                        clearInterval(pollingInterval);
+                        pollingInterval = null;
+                        
+                        var errMsg = data.error || 'Unknown error occurred';
+                        showStatus('error', '✗ Error: ' + errMsg);
+                        generateBtn.disabled = false;
+                    }
+                    else {
+                        console.log('Unknown status:', data.status);
+                    }
+                })
+                .catch(function(err) {
+                    console.error('Polling error:', err);
+                    // Don't stop polling on network errors, just log them
+                    showStatus('processing', '<span class="loader"></span> Processing... (checking status)');
+                });
+        }, 2000);
+    }
+
+    downloadBtn.onclick = function() {
+        if (!generatedSrt) {
+            alert('No captions to download');
+            return;
+        }
+
+        var blob = new Blob([generatedSrt], { type: 'text/plain' });
+        var url = URL.createObjectURL(blob);
+
+        var a = document.createElement('a');
         a.href = url;
-        a.download = "captions.srt";
+        a.download = 'captions.srt';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
 
         URL.revokeObjectURL(url);
+        
+        showStatus('success', '✓ SRT file downloaded successfully!');
     };
 
     function showStatus(type, message) {
-        statusBox.className = `status active ${type}`;
-        statusBox.textContent = message;
+        statusBox.className = 'status active ' + type;
+        statusBox.innerHTML = message;
+        statusBox.style.display = 'block';
     }
 
     function hideOutput() {
-        srtOutput.classList.remove("active");
-        downloadBtn.classList.remove("active");
-        statusBox.classList.remove("active");
+        srtOutput.classList.remove('active');
+        downloadBtn.classList.remove('active');
+        generatedSrt = '';
+        if (pollingInterval) {
+            clearInterval(pollingInterval);
+            pollingInterval = null;
+        }
     }
 </script>
 
